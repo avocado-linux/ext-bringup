@@ -16,12 +16,15 @@ workflow builds the extension against the live 2026/next and 2024/next qemux86-6
   (device tree); `strace`, `procps`, `htop`, `curl`.
 - **Serial autologin**: a drop-in for `serial-getty@.service` that runs `agetty --autologin root`. It applies to
   every serial console, so it does not name a tty. The extension restarts the running getties when it merges.
+  Every merge reruns the hook, so a refresh or deploy restarts the serial getty and ends an open console session.
 
 ## Why the console and not SSH
 
-The base rootfs ships root locked (`root:*`), and `/root` and `/var` are not writable before the first boot, so a
-fresh board has no credentials to log in with and no place to put a key. A console shell is the way in. From it,
-add your public key to the per-user file `avocado-ext-sshd-dev` reads authorized keys from:
+The base rootfs ships root locked (`root:*`), and `/root` is not writable before the first boot, so a fresh board
+has no credentials to log in with. If you can seed the var partition at build time, install the key that way: add
+a `var_files` entry to the runtime that copies a file named `root` into `lib/ssh/authorized_keys.d/` (see the
+Avocado guide "Seeding the var partition"). The console is the way in for a board with no key yet. From it, add
+your public key to the per-user file `avocado-ext-sshd-dev` reads authorized keys from:
 
 ```sh
 mkdir -p /var/lib/ssh/authorized_keys.d
@@ -61,10 +64,7 @@ avocado build
 
 ## Notes
 
-- The autologin command line was run on an Orin Nano (linux-yocto 6.18.52) as a transient unit on the serial
-  console, and the merged template drop-in was read back with `systemctl cat` for a dummy instance. It was not
-  exercised through the stock `serial-getty@ttyTCU0.service` start path, because that board masked the getty on the
-  kernel command line for an unrelated reason.
+- Not yet verified through the stock `serial-getty@.service` start path.
 - Anyone with physical or serial access gets a root shell. That is the point of the extension, and why it must not
   ship in a production runtime.
 
