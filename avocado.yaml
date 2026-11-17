@@ -1,35 +1,47 @@
-# Which targets this extension supports. '*' = any target.
-# For a BSP, replace with the single board target and set default_target.
 supported_targets: '*'
 
 extensions:
-  # Rename to avocado-ext-<name> (or avocado-bsp-<board> for a BSP).
-  avocado-ext-template:
+  avocado-ext-bringup:
     version: 0.1.0
     release: r0
-    summary: One-line summary
-    description: One-line description
+    summary: Hardware bringup tools and a root serial console
+    description: Bringup tools (network, bus probing, storage, device tree, tracing) and a serial console that logs in as root without a password. DO NOT USE IN PRODUCTION.
     license: Apache-2.0
-    url: https://github.com/avocadolinux/avocado-os
+    url: https://github.com/avocado-linux/ext-bringup
     vendor: Avocado Linux <info@avocadolinux.org>
 
-    # Runtime packages pulled from the target feed.
-    packages: {}
+    types:
+      - sysext
+      - confext
 
-    # Optional, delete what you don't use:
-    #
-    # enable_services:
-    #   - foo.service
-    #
-    # on_merge:
-    #   - systemctl start --no-block foo.service
-    #
-    # sdk:
-    #   packages:
-    #     nativesdk-foo: '*'
+    overlay: overlay
+
+    # The serial getty may already be up when the overlay merges; restart it so the autologin drop-in applies.
+    on_merge:
+      - systemctl try-restart --no-block serial-getty@*.service
+
+    packages:
+      curl: '*'
+      devmem2: '*'
+      dosfstools: '*'
+      dtc: '*'
+      e2fsprogs: '*'
+      ethtool: '*'
+      htop: '*'
+      i2c-tools: '*'
+      iproute2: '*'
+      iputils: '*'
+      libgpiod: '*'
+      libgpiod-tools: '*'
+      parted: '*'
+      pciutils: '*'
+      procps: '*'
+      strace: '*'
+      tcpdump: '*'
+      usbutils: '*'
 
 # Release-scoped, not channel-scoped: this resolves to avocadolinux/sdk:2026.
-# The SDK image is per-release only — appending the channel points at a tag
+# The SDK image is per-release only; appending the channel points at a tag
 # that does not exist.
 sdk:
   image: docker.io/avocadolinux/sdk:{{ env.AVOCADO_DISTRO_RELEASE }}

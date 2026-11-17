@@ -1,64 +1,75 @@
-# ext-template
+# ext-bringup
 
-GitHub template repo for new Avocado extensions. **Use this template** → then work
-through the checklist below.
+Avocado extension for a board with nothing provisioned yet: a set of hardware bringup tools and a serial console
+that logs in as root without a password. **Do not use it in production.**
 
-## New-extension checklist
+## Supported targets
 
-1. Rename the repo `ext-<name>` (or `bsp-<board>`).
-2. `avocado.yaml` — rename the extension key to `avocado-ext-<name>`, fill in
-   `summary`/`description`, set `supported_targets` (and `default_target` for a BSP),
-   list your `packages`. Leave the `sdk.image` line alone.
-3. `.github/workflows/test.yml` — set the matrix `target` to something the extension
-   actually supports (`qemux86-64` is fine for target-agnostic extensions).
-4. `.github/workflows/release.yml` — same, plus add matrix rows for every feed you
-   publish into.
-5. `CHANGELOG.md` — replace the placeholder `0.1.0` entry.
-6. Delete this section from the README and describe the extension instead (see
-   "Using this extension" below — keep that part).
-7. Repo secrets `AVOCADO_CONNECT_TOKEN` and `AVOCADO_CONNECT_ORG` must be set (org-level
-   secrets cover this if the repo is in `avocado-linux`).
+All targets. The tool packages were checked against the 2026/next feeds for jetson-orin-nano, jetson-agx-orin,
+qemux86-64, raspberrypi5 and imx93-frdm; none was missing. The 2024 feed was not checked by hand. The `test.yml`
+workflow builds the extension against the live 2026/next and 2024/next qemux86-64 feeds on every pull request.
 
-Release: tag the commit with the exact `avocado.yaml` version, e.g. `git tag 0.1.0 && git push --tags`.
+## What's included
 
-## Conventions
+- **Tools**: `ethtool`, `iproute2`, `iputils`, `tcpdump` (network); `i2c-tools`, `libgpiod`, `libgpiod-tools`,
+  `usbutils`, `pciutils`, `devmem2` (buses and memory); `e2fsprogs`, `dosfstools`, `parted` (storage); `dtc`
+  (device tree); `strace`, `procps`, `htop`, `curl`.
+- **Serial autologin**: a drop-in for `serial-getty@.service` that runs `agetty --autologin root`. It applies to
+  every serial console, so it does not name a tty. The extension restarts the running getties when it merges.
+  Every merge reruns the hook, so a refresh or deploy restarts the serial getty and ends an open console session.
 
-- **SDK image is release-scoped, not channel-scoped.**
-  `docker.io/avocadolinux/sdk:{{ env.AVOCADO_DISTRO_RELEASE }}` → `avocadolinux/sdk:2026`
-  on a 2026 CI leg, `avocadolinux/sdk:2024` on a 2024 one. Do not append
-  `-{{ env.AVOCADO_DISTRO_CHANNEL }}` — there is no such tag on any release. The channel
-  selects the *package feed*; the image tag is per-release only.
-- **CI comes from `avocado-linux/actions@v1`**, pinned. The matrix lives in the caller so
-  each repo owns its own target/feed combinations.
-- **Feed today is `2024`/`edge-next`.** `avocado-linux/actions@v1` *defaults* to
-  `2026`/`edge`, but the 2026 feed currently publishes only `jetson-agx-thor`, so the
-  workflows here pass 2024 explicitly. Move a target to 2026 as it lands there.
+## Why the console and not SSH
+
+The base rootfs ships root locked (`root:*`), and `/root` is not writable before the first boot, so a fresh board
+has no credentials to log in with. If you can seed the var partition at build time, install the key that way: add
+a `var_files` entry to the runtime that copies a file named `root` into `lib/ssh/authorized_keys.d/` (see the
+Avocado guide "Seeding the var partition"). The console is the way in for a board with no key yet. From it, add
+your public key to the per-user file `avocado-ext-sshd-dev` reads authorized keys from:
+
+```sh
+mkdir -p /var/lib/ssh/authorized_keys.d
+echo 'ssh-ed25519 AAAA... you@host' >> /var/lib/ssh/authorized_keys.d/root
+```
+
+The directory and the file must be owned by root and not group- or world-writable, because sshd checks their
+ownership and permissions and ignores the key otherwise. This location requires `avocado-ext-sshd-dev` 0.1.1 or
+newer.
 
 ## Using this extension
 
-`ext-template` is an [Avocado](https://avocadolinux.org) extension — a reusable fragment of
-build- and runtime-configuration that you compose into your own Avocado project. To use it,
-declare it as a package-sourced extension in your `avocado.yaml` and add it to a runtime:
+Declare it as a package-sourced extension in your `avocado.yaml` and add it to a runtime, next to the other
+development extensions:
 
 ```yaml
 extensions:
-  avocado-ext-template:
+  avocado-ext-bringup:
     source:
       type: package
       version: "*"        # or pin an exact version
 
 runtimes:
-  my-runtime:
+  dev:
     extensions:
-      - avocado-ext-template
+      - avocado-ext-dev
+      - avocado-ext-sshd-dev
+      - avocado-ext-bringup
 ```
 
 Then install and build:
 
 ```sh
-avocado install   # fetches + installs the SDK, extensions and runtime deps from your config
-avocado build     # builds the SDK compile steps, extensions and runtime images
+avocado install
+avocado build
 ```
 
-`avocado install` pulls the extension from your target's package feed and merges its
-config into your project; `avocado build` then produces the runtime.
+## Notes
+
+- Not yet verified through the stock `serial-getty@.service` start path.
+- Anyone with physical or serial access gets a root shell. That is the point of the extension, and why it must not
+  ship in a production runtime.
+
+## Releasing
+
+Versions are plain semver. Open a pull request that sets the new version in `avocado.yaml` and `CHANGELOG.md`; the
+`test.yml` workflow runs against the live feeds. After it merges, tag the commit with the exact `avocado.yaml`
+version (`git tag 0.1.0 && git push --tags`) and `release.yml` packages and publishes it.
